@@ -27,12 +27,12 @@ AUTH_PATH = "/data/.wwebjs_auth" if (IS_RENDER or IS_DOCKER) else "./sessions"
 app = Flask(__name__, static_folder="app/static", template_folder="app/templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "bulksender-secret-key")
 
-# Use eventlet mode for production stability on Render
-# Note: eventlet monkey-patching is handled in the gunicorn command
+# Use threading mode for production stability on Render
+# Note: This works best with gthread workers in Gunicorn
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode=None, # Auto-detect (it will pick eventlet if available)
+    async_mode="threading",
     logger=True, 
     engineio_logger=True,
     ping_timeout=120, # Increased for high latency / mobile networks

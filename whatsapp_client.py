@@ -159,7 +159,16 @@ class WhatsAppClient:
 
             log.info("Waiting for chat box...")
             try:
-                loc = self._page.wait_for_selector(box_selector, timeout=15000)  # REDUCED from 30s to 15s
+                # Wait for chat box - enhanced selector list and increased timeout
+                box_selectors = [
+                    'div[contenteditable="true"][data-tab="10"]',
+                    'div[title="Type a message"]',
+                    '[data-testid="conversation-compose-box-input"]',
+                    'footer div[contenteditable="true"]',
+                    '#main footer div[role="textbox"]'
+                ]
+                combined_selector = ", ".join(box_selectors)
+                loc = self._page.wait_for_selector(combined_selector, timeout=25000, state="visible")
                 log.info("Chat box found!")
             except Exception:
                 # Check if invalid number popup appeared
@@ -662,11 +671,12 @@ class WhatsAppClient:
                 request = route.request
                 resource_type = request.resource_type
                 
-                # Always allow scripts and essential XHR/Fetch
-                if resource_type in ("script", "xhr", "fetch", "document", "websocket"):
+                # Always allow scripts and essential XHR/Fetch/Stylesheets
+                # Blocking stylesheets causes the UI to fail rendering, which breaks selectors.
+                if resource_type in ("script", "xhr", "fetch", "document", "websocket", "stylesheet"):
                     return route.continue_()
                 
-                # Block everything else if authenticated (images, fonts, stylesheets, media)
+                # Block heavy binary assets (images, fonts, media)
                 # This saves massive amounts of RAM
                 if self.is_ready:
                     log.debug(f"Blocking {resource_type}: {request.url[:50]}...")

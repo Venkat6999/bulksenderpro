@@ -25,6 +25,6 @@ ENV PORT=3000 \
 
 EXPOSE 3000
 
-# Start the server using Gunicorn with Eventlet worker
-# Use 1 worker to save memory on Render Free Plan
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:3000", "server:app"]
+# Start the server using Gunicorn with gthread worker
+# gthread is more stable than eventlet for Playwright (avoids event loop conflicts)
+CMD ["gunicorn", "--worker-class", "gthread", "-w", "1", "--threads", "4", "--bind", "0.0.0.0:3000", "server:app"]
