@@ -593,14 +593,6 @@ class WhatsAppClient:
                 ],
             }
 
-            if self.is_docker:
-                chrome_path = os.environ.get(
-                    "PUPPETEER_EXECUTABLE_PATH",
-                    "/usr/bin/google-chrome-stable"
-                )
-                if os.path.exists(chrome_path):
-                    launch_opts["executable_path"] = chrome_path
-
             browser_type = self._playwright.chromium
             user_data_dir = str(self.session_path)
 
