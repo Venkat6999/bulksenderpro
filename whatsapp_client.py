@@ -596,12 +596,24 @@ class WhatsAppClient:
             browser_type = self._playwright.chromium
             user_data_dir = str(self.session_path)
 
+            launch_opts.update({
+                "viewport": {"width": 1280, "height": 800},
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "device_scale_factor": 1,
+            })
+
             self._context = browser_type.launch_persistent_context(
                 user_data_dir,
                 **launch_opts
             )
+            
+            # STEALTH: Evade 'Headless' detection by deleting the webdriver property
+            self._context.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
+            
             self._page = self._context.new_page()
             self._page.on("console", lambda m: None)
+            
+            log.info(f"Opening {self.WA_URL} ...")
             self._page.goto(self.WA_URL, wait_until="domcontentloaded", timeout=60000)
 
             self._poll_loop()
@@ -639,14 +651,29 @@ class WhatsAppClient:
 
                 if state == "qr":
                     qr_text = self._extract_qr_text()
+                    
+                    data_url = None
                     if qr_text and qr_text != self._last_qr_text:
                         self._last_qr_text = qr_text
                         data_url = self._qr_to_data_url(qr_text)
-                        if data_url:
-                            self.last_qr = data_url
-                            self._on_qr(data_url)
-                            authenticated = False
-                            ready_emitted = False
+                    elif not qr_text:
+                        # VISUAL FALLBACK: Take a screenshot of the QR element directly
+                        try:
+                            # Selection for the QR container
+                            qr_el = self._page.query_selector('canvas[aria-label="Scan me!"]') or \
+                                    self._page.query_selector('div[data-ref]')
+                            if qr_el:
+                                screenshot_bytes = qr_el.screenshot()
+                                b64 = base64.b64encode(screenshot_bytes).decode()
+                                data_url = f"data:image/png;base64,{b64}"
+                        except:
+                            pass
+
+                    if data_url and data_url != self.last_qr:
+                        self.last_qr = data_url
+                        self._on_qr(data_url)
+                        authenticated = False
+                        ready_emitted = False
 
                 elif state == "authenticated" and not authenticated:
                     authenticated = True
