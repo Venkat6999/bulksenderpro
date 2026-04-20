@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>BulkSender Pro — Dashboard</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #0a0f0d; --surface: #111a15; --surface2: #162019;
+            --border: #1e3028; --green: #00e676; --green-dim: #00c853;
+            --green-glow: rgba(0,230,118,0.15); --text: #e8f5e9;
+            --muted: #546e5a; --danger: #ff5252; --warn: #ffb300;
+        }
+        html, body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 48px 48px; opacity: 0.4; pointer-events: none; z-index: 0;
+        }
+
+        /* ── Layout ── */
+        .shell { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; padding: 32px 24px; }
+
+        /* ── Top bar ── */
+        .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
+        .logo-row { display: flex; align-items: center; gap: 12px; }
+        .logo-icon { width: 36px; height: 36px; background: var(--green-glow); border: 1px solid rgba(0,230,118,0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+        .logo-icon svg { width: 20px; height: 20px; fill: var(--green); }
+        .app-name { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 800; }
+        .wa-badge { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11px; color: var(--muted); }
+        .wa-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+        .wa-dot.online { background: var(--green); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+        /* ── Grid ── */
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+        }
+        .card-title { font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 18px; }
+        .card.full { grid-column: 1 / -1; }
+
+        /* ── Form elements ── */
+        label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; margin-top: 14px; }
+        label:first-of-type { margin-top: 0; }
+        textarea, input[type="text"], input[type="number"] {
+            width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text); font-family: 'DM Mono', monospace;
+            font-size: 12px; padding: 10px 12px; outline: none; transition: border-color 0.2s;
+            resize: vertical;
+        }
+        textarea:focus, input:focus { border-color: rgba(0,230,118,0.4); }
+        textarea { min-height: 100px; }
+
+        .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+        /* File upload */
+        .file-zone {
+            border: 1px dashed var(--border); border-radius: 8px; padding: 18px;
+            text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+            font-size: 11px; color: var(--muted); position: relative;
+        }
+        .file-zone:hover { border-color: rgba(0,230,118,0.4); background: var(--green-glow); }
+        .file-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+        #file-name { margin-top: 6px; font-size: 11px; color: var(--green); }
+
+        /* Buttons */
+        .btn-row { display: flex; gap: 10px; margin-top: 18px; }
+        .btn {
+            flex: 1; padding: 12px; border: none; border-radius: 10px;
+            font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px;
+        }
+        .btn-primary { background: var(--green); color: #0a0f0d; }
+        .btn-primary:hover { background: var(--green-dim); }
+        .btn-primary:disabled { background: #1e3028; color: var(--muted); cursor: not-allowed; }
+        .btn-danger  { background: rgba(255,82,82,0.1); color: var(--danger); border: 1px solid rgba(255,82,82,0.3); }
+        .btn-danger:hover  { background: rgba(255,82,82,0.2); }
+        .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-logout  { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 11px; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-family: 'DM Mono', monospace; transition: color 0.2s; }
+        .btn-logout:hover { color: var(--danger); border-color: rgba(255,82,82,0.4); }
+
+        /* Stats */
+        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+        .stat-box { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+        .stat-num { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--text); }
+        .stat-num.green { color: var(--green); }
+        .stat-num.red   { color: var(--danger); }
+        .stat-label { font-size: 10px; color: var(--muted); margin-top: 3px; letter-spacing: 0.5px; }
+
+        /* Progress bar */
+        .progress-wrap { margin-bottom: 16px; }
+        .progress-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+        .progress-track { height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+        .progress-fill  { height: 100%; background: var(--green); border-radius: 99px; transition: width 0.4s ease; width: 0%; }
+
+        /* Log */
+        .log-wrap { height: 220px; overflow-y: auto; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+        .log-wrap::-webkit-scrollbar { width: 4px; }
+        .log-wrap::-webkit-scrollbar-track { background: transparent; }
+        .log-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .log-entry { font-size: 11px; display: flex; gap: 8px; align-items: flex-start; }
+        .log-time  { color: var(--muted); flex-shrink: 0; }
+        .log-ok   { color: var(--green); }
+        .log-fail { color: var(--danger); }
+        .log-info { color: var(--warn); }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; z-index: 100;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 12px 18px; font-size: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            transform: translateY(80px); opacity: 0; transition: all 0.3s;
+            pointer-events: none;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { border-color: rgba(0,230,118,0.4); color: var(--green); }
+        .toast.error   { border-color: rgba(255,82,82,0.4); color: var(--danger); }
+    </style>
+</head>
+<body>
+<div class="shell">
+
+    <!-- Top bar -->
+    <div class="topbar">
+        <div class="logo-row">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/></svg>
+            </div>
+            <span class="app-name">BulkSender Pro</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <div class="wa-badge">
+                <div class="wa-dot" id="wa-dot"></div>
+                <span id="wa-status-text">Connecting...</span>
+            </div>
+            <button class="btn-logout" onclick="handleLogout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="grid">
+
+        <!-- Left: Compose -->
+        <div class="card">
+            <div class="card-title">Compose Campaign</div>
+
+            <label>Phone Numbers (one per line or comma-separated)</label>
+            <textarea id="numbers" placeholder="919876543210&#10;918765432109&#10;917654321098"></textarea>
+
+            <label>Message</label>
+            <textarea id="message" style="min-height:80px;" placeholder="Hello {name}, this is a bulk message..."></textarea>
+
+            <label>Attach Media (optional)</label>
+            <div class="file-zone" id="file-zone">
+                <input type="file" id="file-input" onchange="handleFile(this)" accept="image/jpeg,image/png,image/jpg,image/gif,video/mp4,audio/*,.pdf"/>
+                📎 Click to attach image / video / PDF
+                <div id="file-name"></div>
+            </div>
+
+            <div class="row2">
+                <div>
+                    <label>Min Delay (ms)</label>
+                    <input type="number" id="delay-min" value="3000" min="500"/>
+                </div>
+                <div>
+                    <label>Max Delay (ms)</label>
+                    <input type="number" id="delay-max" value="6000" min="500"/>
+                </div>
+            </div>
+
+            <label>Messages per Number</label>
+            <input type="number" id="msgs-per-num" value="1" min="1" max="10"/>
+
+            <div class="btn-row">
+                <button class="btn btn-primary" id="send-btn" onclick="startSend()">▶ Start Campaign</button>
+                <button class="btn btn-danger"  id="stop-btn" onclick="stopSend()" disabled>■ Stop</button>
+            </div>
+        </div>
+
+        <!-- Right: Progress + Log -->
+        <div class="card">
+            <div class="card-title">Live Progress</div>
+
+            <div class="stats-row">
+                <div class="stat-box"><div class="stat-num green" id="stat-sent">0</div><div class="stat-label">SENT</div></div>
+                <div class="stat-box"><div class="stat-num red"   id="stat-failed">0</div><div class="stat-label">FAILED</div></div>
+                <div class="stat-box"><div class="stat-num"       id="stat-total">0</div><div class="stat-label">TOTAL</div></div>
+            </div>
+
+            <div class="progress-wrap">
+                <div class="progress-label">
+                    <span id="prog-label">Idle</span>
+                    <span id="prog-pct">0%</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" id="prog-fill"></div></div>
+            </div>
+
+            <div class="card-title" style="margin-top:16px;">Activity Log</div>
+            <div class="log-wrap" id="log-wrap">
+                <div class="log-entry"><span class="log-info log-time">--:--:--</span><span class="log-info">Waiting to start...</span></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+    // ── Socket ──
+    const socket = io({ transports: ['websocket', 'polling'] });
+
+    const waDot        = document.getElementById('wa-dot');
+    const waStatusText = document.getElementById('wa-status-text');
+    const sendBtn      = document.getElementById('send-btn');
+    const stopBtn      = document.getElementById('stop-btn');
+    const logWrap      = document.getElementById('log-wrap');
+
+    let isSending = false;
+
+    // ── WhatsApp status ──
+    socket.on('status', (s) => {
+        if (s === 'ready') {
+            waDot.className = 'wa-dot online';
+            waStatusText.textContent = 'Connected';
+            sendBtn.disabled = false;
+        } else if (s === 'disconnected' || s === 'disconnected_unexpectedly' || s === 'auth_failure') {
+            waDot.className = 'wa-dot';
+            waStatusText.textContent = 'Disconnected';
+            sendBtn.disabled = true;
+            showToast('WhatsApp disconnected — redirecting to login...', 'error');
+            setTimeout(() => window.location.href = '/login.html', 2500);
+        } else {
+            waDot.className = 'wa-dot';
+            waStatusText.textContent = s;
+        }
+    });
+
+    // ── Progress events ──
+    socket.on('progress', (p) => {
+        document.getElementById('stat-sent').textContent   = p.type === 'success'
+            ? parseInt(document.getElementById('stat-sent').textContent) + 1
+            : document.getElementById('stat-sent').textContent;
+        document.getElementById('stat-failed').textContent = p.type === 'fail'
+            ? parseInt(document.getElementById('stat-failed').textContent) + 1
+            : document.getElementById('stat-failed').textContent;
+        document.getElementById('stat-total').textContent  = p.total;
+
+        const pct = Math.round((p.current / p.total) * 100);
+        document.getElementById('prog-fill').style.width  = pct + '%';
+        document.getElementById('prog-pct').textContent   = pct + '%';
+        document.getElementById('prog-label').textContent = `${p.current} / ${p.total} messages`;
+
+        const cls  = p.type === 'success' ? 'log-ok' : 'log-fail';
+        const icon = p.type === 'success' ? '✓' : '✗';
+        const reason = p.reason ? ` (${p.reason})` : '';
+        addLog(`${icon} ${p.number}${reason}`, cls);
+    });
+
+    socket.on('completed', (r) => {
+        isSending = false;
+        sendBtn.disabled = false;
+        stopBtn.disabled = true;
+        const msg = r.stopped
+            ? `🛑 Stopped — ${r.sent} sent, ${r.failed} failed`
+            : `✅ Done — ${r.sent} sent, ${r.failed} failed`;
+        addLog(msg, 'log-info');
+        showToast(msg, r.stopped ? 'error' : 'success');
+        document.getElementById('prog-label').textContent = r.stopped ? 'Stopped' : 'Completed';
+    });
+
+    // ── File handling ──
+    function handleFile(input) {
+        const f = input.files[0];
+        document.getElementById('file-name').textContent = f ? `📄 ${f.name}` : '';
+    }
+
+    // ── Send ──
+    async function startSend() {
+        const numbers = document.getElementById('numbers').value.trim();
+        const message = document.getElementById('message').value.trim();
+        if (!numbers || !message) { showToast('Please fill in numbers and message.', 'error'); return; }
+
+        const fd = new FormData();
+        fd.append('numbers', numbers);
+        fd.append('message', message);
+        fd.append('delayMin', document.getElementById('delay-min').value);
+        fd.append('delayMax', document.getElementById('delay-max').value);
+        fd.append('messagesPerNumber', document.getElementById('msgs-per-num').value);
+        const file = document.getElementById('file-input').files[0];
+        if (file) fd.append('file', file);
+
+        // Reset stats
+        document.getElementById('stat-sent').textContent   = '0';
+        document.getElementById('stat-failed').textContent = '0';
+        document.getElementById('stat-total').textContent  = '0';
+        document.getElementById('prog-fill').style.width   = '0%';
+        document.getElementById('prog-pct').textContent    = '0%';
+        document.getElementById('prog-label').textContent  = 'Starting...';
+        logWrap.innerHTML = '';
+
+        try {
+            const res = await fetch('/bulk-send', { method: 'POST', body: fd });
+            const text = await res.text();
+            if (!res.ok) { showToast(text, 'error'); return; }
+            isSending = true;
+            sendBtn.disabled = true;
+            stopBtn.disabled = false;
+            addLog('Campaign started ▶', 'log-info');
+        } catch (e) {
+            showToast('Failed to start: ' + e.message, 'error');
+        }
+    }
+
+    async function stopSend() {
+        await fetch('/stop-send', { method: 'POST' });
+        addLog('Stop requested 🛑', 'log-info');
+        stopBtn.disabled = true;
+    }
+
+    async function handleLogout() {
+        await fetch('/logout', { method: 'POST' });
+        window.location.href = '/login.html';
+    }
+
+    // ── Helpers ──
+    function addLog(text, cls) {
+        const now = new Date().toTimeString().slice(0,8);
+        const el = document.createElement('div');
+        el.className = 'log-entry';
+        el.innerHTML = `<span class="log-time">${now}</span><span class="${cls}">${text}</span>`;
+        logWrap.appendChild(el);
+        logWrap.scrollTop = logWrap.scrollHeight;
+    }
+
+    function showToast(msg, type) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = `toast ${type} show`;
+        setTimeout(() => t.className = 'toast', 3500);
+    }
+</script>
+</body>
+</html>

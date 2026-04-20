@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BulkSender Pro — Login</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #0a0f0d; --surface: #111a15; --border: #1e3028;
+            --green: #00e676; --green-dim: #00c853;
+            --green-glow: rgba(0,230,118,0.18); --green-glow-sm: rgba(0,230,118,0.08);
+            --text: #e8f5e9; --muted: #546e5a; --danger: #ff5252; --warn: #ffb300;
+        }
+        html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; overflow: hidden; }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 48px 48px; opacity: 0.5; pointer-events: none; z-index: 0;
+        }
+        body::after {
+            content: ''; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 600px; height: 600px;
+            background: radial-gradient(circle, rgba(0,230,118,0.07) 0%, transparent 70%);
+            pointer-events: none; z-index: 0;
+        }
+        .page { position: relative; z-index: 1; height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+        .card {
+            width: 100%; max-width: 420px; background: var(--surface);
+            border: 1px solid var(--border); border-radius: 20px; padding: 40px 36px;
+            box-shadow: 0 0 60px rgba(0,0,0,0.6), 0 0 0 1px var(--green-glow-sm) inset;
+            animation: fadeUp 0.5s ease both;
+        }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+        .header { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; }
+        .logo-wrap {
+            width: 44px; height: 44px; background: var(--green-glow);
+            border: 1px solid rgba(0,230,118,0.3); border-radius: 12px;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .logo-wrap svg { width: 24px; height: 24px; fill: var(--green); }
+        .brand { font-family: 'Syne', sans-serif; }
+        .brand-name { font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+        .brand-sub  { font-size: 11px; color: var(--muted); margin-top: 1px; letter-spacing: 0.5px; }
+        .status-bar {
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px;
+            padding: 8px 14px; margin-bottom: 24px; font-size: 12px; color: var(--muted);
+            min-height: 38px; transition: all 0.3s ease;
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background 0.3s ease; }
+        .dot.connecting { background: var(--warn); animation: pulse-warn 1.2s infinite; }
+        .dot.ready      { background: var(--green); animation: pulse-green 2s infinite; }
+        .dot.error      { background: var(--danger); }
+        @keyframes pulse-warn  { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        @keyframes pulse-green { 0%,100%{opacity:1} 50%{opacity:0.5} }
+        .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; margin-bottom: 24px; }
+        .qr-frame {
+            position: relative; width: 220px; height: 220px;
+            border-radius: 16px; overflow: hidden; border: 2px solid var(--border);
+            background: #fff; display: flex; align-items: center; justify-content: center; transition: border-color 0.3s;
+        }
+        .qr-frame.active { border-color: var(--green); box-shadow: 0 0 24px var(--green-glow); }
+        .qr-frame::before, .qr-frame::after { content: ''; position: absolute; width: 20px; height: 20px; border-color: var(--green); border-style: solid; z-index: 2; }
+        .qr-frame::before { top: 8px; left: 8px; border-width: 2px 0 0 2px; border-radius: 4px 0 0 0; }
+        .qr-frame::after  { bottom: 8px; right: 8px; border-width: 0 2px 2px 0; border-radius: 0 0 4px 4px; }
+        #qr-img { width: 196px; height: 196px; display: none; border-radius: 6px; }
+        .qr-placeholder { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; text-align: center; }
+        .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin 0.9s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .qr-success { display: none; flex-direction: column; align-items: center; gap: 8px; color: var(--green); font-size: 12px; text-align: center; }
+        .check-circle {
+            width: 52px; height: 52px; background: var(--green-glow);
+            border: 2px solid var(--green); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            animation: popIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275) both;
+        }
+        @keyframes popIn { from{transform:scale(0.3);opacity:0} to{transform:scale(1);opacity:1} }
+        .check-circle svg { width: 26px; height: 26px; stroke: var(--green); stroke-width: 2.5; fill: none; }
+        .redirect-bar { display: none; align-items: center; gap: 8px; font-size: 11px; color: var(--green-dim); margin-top: 4px; }
+        .redirect-bar .rdr-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: blink 0.6s infinite alternate; }
+        @keyframes blink { from{opacity:1} to{opacity:0.2} }
+        .instructions { border-top: 1px solid var(--border); padding-top: 20px; }
+        .instructions h4 { font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px; }
+        .steps { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+        .steps li { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+        .step-num { width: 18px; height: 18px; background: var(--border); border-radius: 4px; font-size: 10px; font-weight: 600; color: var(--green); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+        #logout-btn { display: none; width: 100%; margin-top: 20px; padding: 10px; background: transparent; border: 1px solid #3a1a1a; border-radius: 8px; color: var(--danger); font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+        #logout-btn:hover { background: rgba(255,82,82,0.08); border-color: var(--danger); }
+        #reconnect-btn { display: none; width: 100%; margin-top: 12px; padding: 10px; background: var(--green-glow); border: 1px solid rgba(0,230,118,0.3); border-radius: 8px; color: var(--green); font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; transition: background 0.2s; }
+        #reconnect-btn:hover { background: rgba(0,230,118,0.22); }
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="card">
+        <div class="header">
+            <div class="logo-wrap">
+                <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/></svg>
+            </div>
+            <div class="brand">
+                <div class="brand-name">BulkSender Pro</div>
+                <div class="brand-sub">WHATSAPP AUTOMATION</div>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="dot connecting" id="status-dot"></div>
+            <span id="status-text">Connecting to server...</span>
+        </div>
+
+        <div class="qr-wrap">
+            <div class="qr-frame" id="qr-frame">
+                <div class="qr-placeholder" id="qr-placeholder">
+                    <div class="spinner"></div>
+                    <span>Generating QR code...</span>
+                </div>
+                <img id="qr-img" src="" alt="Scan QR Code" />
+                <div class="qr-success" id="qr-success">
+                    <div class="check-circle">
+                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                    <span>Authenticated!</span>
+                </div>
+            </div>
+            <div class="redirect-bar" id="redirect-bar">
+                <div class="rdr-dot"></div>
+                <span id="redirect-text">Redirecting to dashboard...</span>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h4>How to connect</h4>
+            <ul class="steps">
+                <li><span class="step-num">1</span>Open WhatsApp on your phone</li>
+                <li><span class="step-num">2</span>Tap Menu (⋮) → Linked Devices</li>
+                <li><span class="step-num">3</span>Tap "Link a Device" and scan the QR</li>
+            </ul>
+        </div>
+
+        <button id="logout-btn" onclick="handleLogout()">⏏ Logout / Unlink Device</button>
+        <button id="reconnect-btn" onclick="location.reload()">↺ Reconnect</button>
+    </div>
+</div>
+<script>
+    const dot           = document.getElementById('status-dot');
+    const statusText    = document.getElementById('status-text');
+    const qrFrame       = document.getElementById('qr-frame');
+    const qrImg         = document.getElementById('qr-img');
+    const qrPlaceholder = document.getElementById('qr-placeholder');
+    const qrSuccess     = document.getElementById('qr-success');
+    const redirectBar   = document.getElementById('redirect-bar');
+    const redirectText  = document.getElementById('redirect-text');
+    const logoutBtn     = document.getElementById('logout-btn');
+    const reconnectBtn  = document.getElementById('reconnect-btn');
+
+    const socket = io({ transports: ['websocket', 'polling'], reconnectionAttempts: 10, reconnectionDelay: 2000 });
+
+    function setStatus(text, state) {
+        statusText.textContent = text;
+        dot.className = 'dot ' + (state || '');
+    }
+
+    function showQR(dataUrl) {
+        qrPlaceholder.style.display = 'none';
+        qrSuccess.style.display = 'none';
+        qrImg.src = dataUrl;
+        qrImg.style.display = 'block';
+        qrFrame.classList.add('active');
+        logoutBtn.style.display = 'none';
+        reconnectBtn.style.display = 'none';
+    }
+
+    function showSuccess() {
+        qrImg.style.display = 'none';
+        qrPlaceholder.style.display = 'none';
+        qrSuccess.style.display = 'flex';
+        qrFrame.classList.add('active');
+    }
+
+    function goToDashboard() {
+        showSuccess();
+        redirectBar.style.display = 'flex';
+        let s = 2;
+        redirectText.textContent = `Redirecting in ${s}s...`;
+        const iv = setInterval(() => {
+            s--;
+            if (s <= 0) { clearInterval(iv); window.location.href = '/dashboard.html'; }
+            else redirectText.textContent = `Redirecting in ${s}s...`;
+        }, 1000);
+    }
+
+    socket.on('connect',       () => setStatus('Connected — waiting for WhatsApp...', 'connecting'));
+    socket.on('disconnect',    () => { setStatus('Socket disconnected.', 'error'); reconnectBtn.style.display = 'block'; });
+    socket.on('connect_error', () => { setStatus('Connection error. Check server.', 'error'); reconnectBtn.style.display = 'block'; });
+
+    socket.on('qr', (dataUrl) => {
+        setStatus('Scan the QR code with WhatsApp', 'connecting');
+        showQR(dataUrl);
+    });
+
+    socket.on('status', (status) => {
+        console.log('[status]', status);
+        if (status === 'initializing') {
+            setStatus('WhatsApp is starting up...', 'connecting');
+        } else if (status === 'authenticated') {
+            setStatus('Authenticated ✓ — loading session...', 'ready');
+            showSuccess();
+        } else if (status === 'ready') {
+            setStatus('WhatsApp ready ✓', 'ready');
+            logoutBtn.style.display = 'block';
+            goToDashboard();   // ← THE KEY REDIRECT
+        } else if (status === 'auth_failure') {
+            setStatus('Authentication failed. Refresh to retry.', 'error');
+            reconnectBtn.style.display = 'block';
+        } else if (status === 'disconnected' || status === 'disconnected_unexpectedly') {
+            setStatus('WhatsApp disconnected.', 'error');
+            reconnectBtn.style.display = 'block';
+        } else {
+            setStatus(status, '');
+        }
+    });
+
+    async function handleLogout() {
+        logoutBtn.disabled = true;
+        logoutBtn.textContent = 'Logging out...';
+        try {
+            await fetch('/logout', { method: 'POST' });
+            setStatus('Logged out. Refresh to scan again.', '');
+            qrImg.style.display = 'none';
+            qrSuccess.style.display = 'none';
+            qrPlaceholder.style.display = 'flex';
+            qrFrame.classList.remove('active');
+            logoutBtn.style.display = 'none';
+            reconnectBtn.style.display = 'block';
+        } catch (e) {
+            setStatus('Logout failed. Try again.', 'error');
+            logoutBtn.disabled = false;
+            logoutBtn.textContent = '⏏ Logout / Unlink Device';
+        }
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+sessions/
+__pycache__/
+*.pyc
+.env
+.venv
+env/
+venv/
+.agent/
+node_modules/
+.DS_Store
