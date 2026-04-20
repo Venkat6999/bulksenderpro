@@ -47,12 +47,17 @@ def on_connect():
     log.info(f"Client connected: {request.sid}")
     if wa_client:
         if wa_client.is_ready:
+            log.info("Emitting ready status to new client")
             emit("status", "ready")
         elif wa_client.last_qr:
+            log.info("Emitting QR to new client")
             emit("qr", wa_client.last_qr)
+            emit("status", "initializing")
         else:
+            log.info("Emitting initializing status to new client")
             emit("status", "initializing")
     else:
+        log.info("WhatsApp client not initialized yet")
         emit("status", "initializing")
 
 
@@ -64,32 +69,50 @@ def on_disconnect():
 # ── WhatsApp event callbacks (called from WhatsAppClient) ─────────────────────
 def on_qr(qr_data_url: str):
     log.info("QR Code ready 📲")
-    socketio.emit("qr", qr_data_url)
+    try:
+        socketio.emit("qr", qr_data_url)
+        log.info("QR event emitted successfully")
+    except Exception as e:
+        log.error(f"Failed to emit QR event: {e}")
 
 
 def on_authenticated():
     log.info("WhatsApp authenticated ✅")
-    socketio.emit("status", "authenticated")
+    try:
+        socketio.emit("status", "authenticated")
+        log.info("Authenticated event emitted successfully")
+    except Exception as e:
+        log.error(f"Failed to emit authenticated event: {e}")
 
 
 def on_ready():
-    log.info("WhatsApp ready ✅")
-    socketio.emit("status", "ready")
+    log.info("WhatsApp ready ✅✅✅")
+    try:
+        socketio.emit("status", "ready")
+        log.info("Ready event emitted successfully - clients should redirect to dashboard")
+    except Exception as e:
+        log.error(f"Failed to emit ready event: {e}")
 
 
 def on_auth_failure(msg: str):
     log.error(f"Auth failure ❌: {msg}")
-    socketio.emit("status", "auth_failure")
+    try:
+        socketio.emit("status", "auth_failure")
+    except Exception as e:
+        log.error(f"Failed to emit auth_failure event: {e}")
 
 
 def on_disconnected(reason: str):
     log.warning(f"WhatsApp disconnected: {reason}")
-    socketio.emit("status", "disconnected")
-    if reason == "LOGOUT":
-        log.info("Logout detected — re-initializing for new QR...")
-        threading.Thread(target=_delayed_reinit, daemon=True).start()
-    else:
-        socketio.emit("status", "disconnected_unexpectedly")
+    try:
+        socketio.emit("status", "disconnected")
+        if reason == "LOGOUT":
+            log.info("Logout detected — re-initializing for new QR...")
+            threading.Thread(target=_delayed_reinit, daemon=True).start()
+        else:
+            socketio.emit("status", "disconnected_unexpectedly")
+    except Exception as e:
+        log.error(f"Failed to emit disconnect event: {e}")
 
 
 def _delayed_reinit():

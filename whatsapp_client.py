@@ -700,23 +700,50 @@ class WhatsAppClient:
         try:
             result = self._page.evaluate("""
                 () => {
+                    // Check for QR code
                     const qrCanvas = document.querySelector('canvas[aria-label="Scan me!"]')
-                                  || document.querySelector('div[data-ref]');
+                                  || document.querySelector('div[data-ref]')
+                                  || document.querySelector('canvas');
 
+                    // Check for chat list (ready state)
                     const chatList = document.querySelector('[data-testid="chat-list"]')
-                                  || document.querySelector('#pane-side');
+                                  || document.querySelector('#pane-side')
+                                  || document.querySelector('div[aria-label="Chat list"]')
+                                  || document.querySelector('[data-testid="chatlist"]');
 
+                    // Check for intro screen (authenticated but not fully ready)
                     const introTitle = document.querySelector('._amid')
-                                    || document.querySelector('[data-testid="intro-title"]');
+                                    || document.querySelector('[data-testid="intro-title"]')
+                                    || document.querySelector('[data-testid="intro-md-bubble-heading"]');
 
-                    if (chatList) return 'ready';
-                    if (introTitle) return 'authenticated';
-                    if (qrCanvas) return 'qr';
+                    // Check for main app container
+                    const appMain = document.querySelector('#app')
+                                 || document.querySelector('[data-testid="conversation-panel-wrapper"]');
+
+                    if (chatList) {
+                        console.log('State: ready (chat list found)');
+                        return 'ready';
+                    }
+                    if (introTitle) {
+                        console.log('State: authenticated (intro found)');
+                        return 'authenticated';
+                    }
+                    if (qrCanvas) {
+                        console.log('State: qr (qr canvas found)');
+                        return 'qr';
+                    }
+                    if (appMain) {
+                        console.log('State: loading (app main found)');
+                        return 'loading';
+                    }
+                    console.log('State: loading (default)');
                     return 'loading';
                 }
             """)
+            log.info(f"Detected state: {result}")
             return result or "loading"
-        except Exception:
+        except Exception as e:
+            log.warning(f"State detection error: {e}")
             return "loading"
 
     def _extract_qr_text(self) -> Optional[str]:

@@ -197,18 +197,21 @@
     socket.on('connect_error', () => { setStatus('Connection error. Check server.', 'error'); reconnectBtn.style.display = 'block'; });
 
     socket.on('qr', (dataUrl) => {
+        console.log('[QR] Received QR code');
         setStatus('Scan the QR code with WhatsApp', 'connecting');
         showQR(dataUrl);
     });
 
     socket.on('status', (status) => {
-        console.log('[status]', status);
+        console.log('[STATUS] Received status:', status);
         if (status === 'initializing') {
             setStatus('WhatsApp is starting up...', 'connecting');
         } else if (status === 'authenticated') {
+            console.log('[STATUS] Authenticated - showing success');
             setStatus('Authenticated ✓ — loading session...', 'ready');
             showSuccess();
         } else if (status === 'ready') {
+            console.log('[STATUS] Ready - redirecting to dashboard in 2 seconds');
             setStatus('WhatsApp ready ✓', 'ready');
             logoutBtn.style.display = 'block';
             goToDashboard();   // ← THE KEY REDIRECT
