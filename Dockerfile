@@ -25,5 +25,6 @@ ENV PORT=3000 \
 
 EXPOSE 3000
 
-# Start the server
-CMD ["python", "server.py"]
+# Start the server using Gunicorn with Eventlet worker
+# Use 1 worker to save memory on Render Free Plan
+CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:3000", "server:app"]

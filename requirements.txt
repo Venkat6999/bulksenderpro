@@ -5,3 +5,4 @@ qrcode[pil]==8.0
 Pillow==11.2.1
 python-dotenv==1.0.1
 gunicorn==23.0.0
+eventlet==0.40.0

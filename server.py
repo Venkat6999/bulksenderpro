@@ -27,14 +27,15 @@ AUTH_PATH = "/data/.wwebjs_auth" if (IS_RENDER or IS_DOCKER) else "./sessions"
 app = Flask(__name__, static_folder="app/static", template_folder="app/templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "bulksender-secret-key")
 
-# Use threading mode (most stable for Playwright)
+# Use eventlet mode for production stability on Render
+# Note: eventlet monkey-patching is handled in the gunicorn command
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode="threading",
-    logger=False,
-    engineio_logger=False,
-    ping_timeout=60,
+    async_mode=None, # Auto-detect (it will pick eventlet if available)
+    logger=True, 
+    engineio_logger=True,
+    ping_timeout=120, # Increased for high latency / mobile networks
     ping_interval=25
 )
 
@@ -329,7 +330,7 @@ def _bulk_send_worker(num_list, message, delay_min, delay_max, msgs_per_number, 
         })
 
 
-# ── Startup ───────────────────────────────────────────────────────────────────
+# ── Startup Logic ─────────────────────────────────────────────────────────────
 def start_whatsapp():
     global wa_client
     log.info("⏳ Initializing WhatsApp client...")
@@ -344,9 +345,12 @@ def start_whatsapp():
     )
     wa_client.initialize()
 
+# Start WhatsApp client immediately (crucial for Gunicorn)
+# Since we use -w 1 in Gunicorn, this will only run once.
+if IS_RENDER or IS_DOCKER or not __name__ == "__main__":
+    # Start in a separate thread to not block Gunicorn worker
+    threading.Thread(target=start_whatsapp, daemon=True).start()
 
 if __name__ == "__main__":
-    # Start WhatsApp client in background thread
-    threading.Thread(target=start_whatsapp, daemon=True).start()
-    log.info(f"🚀 Server starting on port {PORT}")
+    log.info(f"🚀 Server starting on port {PORT} (Manual Start)")
     socketio.run(app, host="0.0.0.0", port=PORT, allow_unsafe_werkzeug=True)

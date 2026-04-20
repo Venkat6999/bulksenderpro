@@ -611,6 +611,9 @@ class WhatsAppClient:
                     "--disable-extensions",
                     "--disable-web-security",
                     "--disable-features=IsolateOrigins,site-per-process",
+                    "--js-flags=--max-old-space-size=128", # Cap V8 heap to 128MB
+                    "--no-zygote",
+                    "--disable-dev-shm-usage", # Use /tmp instead of /dev/shm
                 ],
             }
 
@@ -652,6 +655,28 @@ class WhatsAppClient:
             self._page.on("console", lambda m: None)
             
             log.info(f"Opening {self.WA_URL} ...")
+            
+            # MEMORY OPTIMIZATION: Block heavy resources once logged in
+            # We need images for QR scanning, but once authenticated, we can block them.
+            def handle_route(route):
+                request = route.request
+                resource_type = request.resource_type
+                
+                # Always allow scripts and essential XHR/Fetch
+                if resource_type in ("script", "xhr", "fetch", "document", "websocket"):
+                    return route.continue_()
+                
+                # Block everything else if authenticated (images, fonts, stylesheets, media)
+                # This saves massive amounts of RAM
+                if self.is_ready:
+                    log.debug(f"Blocking {resource_type}: {request.url[:50]}...")
+                    return route.abort()
+                
+                # During login, allow everything (need CSS/images for QR)
+                return route.continue_()
+
+            self._page.route("**/*", handle_route)
+            
             self._page.goto(self.WA_URL, wait_until="domcontentloaded", timeout=60000)
 
             self._poll_loop()
