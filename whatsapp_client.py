@@ -645,6 +645,7 @@ class WhatsAppClient:
         authenticated = False
         ready_emitted = False
         consecutive_errors = 0
+        authenticated_since = None  # Track when we first became authenticated
 
         log.info("=== WhatsApp Client v1.2 Polling Loop Started ===")
         while not self._stop:
@@ -670,6 +671,7 @@ class WhatsAppClient:
                 if state == "qr":
                     qr_text = self._extract_qr_text()
                     data_url = None
+                    authenticated_since = None  # Reset authentication timer
                     
                     if qr_text:
                         if qr_text != self._last_qr_text:
@@ -710,13 +712,31 @@ class WhatsAppClient:
 
                 elif state == "authenticated" and not authenticated:
                     authenticated = True
+                    authenticated_since = time.time()  # Start the timer
                     self.last_qr = None
+                    log.info("WhatsApp authenticated ✅")
                     self._on_authenticated()
+
+                elif state == "authenticated" and authenticated and not ready_emitted:
+                    # TIMEOUT FALLBACK: If we've been authenticated for 30+ seconds,
+                    # assume we're ready even if chat list selector doesn't match
+                    if authenticated_since and (time.time() - authenticated_since) > 30:
+                        log.warning("⚠️ Timeout fallback: Forcing 'ready' state after 30s in authenticated")
+                        ready_emitted = True
+                        self.is_ready = True
+                        self.last_qr = None
+                        self._on_ready()
+                    else:
+                        # Still waiting, log progress every 10 seconds
+                        if authenticated_since and int(time.time() - authenticated_since) % 10 == 0:
+                            elapsed = int(time.time() - authenticated_since)
+                            log.info(f"Still authenticating... ({elapsed}s elapsed, waiting for chat list)")
 
                 elif state == "ready" and not ready_emitted:
                     ready_emitted = True
                     self.is_ready = True
                     self.last_qr = None
+                    authenticated_since = None
                     self._on_ready()
 
                 consecutive_errors = 0
