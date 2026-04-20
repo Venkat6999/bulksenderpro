@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import os
 import asyncio
 import base64
@@ -30,9 +33,11 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "bulksender-secret-key")
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode="threading",
+    async_mode=None, # Let it auto-detect best mode (eventlet/gevent)
     logger=False,
     engineio_logger=False,
+    ping_timeout=60,
+    ping_interval=25
 )
 
 # ── State ─────────────────────────────────────────────────────────────────────

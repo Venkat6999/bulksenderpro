@@ -646,6 +646,7 @@ class WhatsAppClient:
         ready_emitted = False
         consecutive_errors = 0
 
+        log.info("=== WhatsApp Client v1.2 Polling Loop Started ===")
         while not self._stop:
             try:
                 if self._page.is_closed():
@@ -668,17 +669,23 @@ class WhatsAppClient:
 
                 if state == "qr":
                     qr_text = self._extract_qr_text()
-                    
                     data_url = None
-                    if qr_text and qr_text != self._last_qr_text:
-                        self._last_qr_text = qr_text
-                        data_url = self._qr_to_data_url(qr_text)
-                    elif not qr_text:
-                        # VISUAL CAPTURE: Last resort for headless environment
+                    
+                    if qr_text:
+                        if qr_text != self._last_qr_text:
+                            log.info(f"New QR text detected (starts with: {qr_text[:10]}...)")
+                            self._last_qr_text = qr_text
+                            data_url = self._qr_to_data_url(qr_text)
+                        else:
+                            # QR text hasn't changed, no need to re-emit
+                            pass
+                    else:
+                        # No text found, try visual capture
+                        log.info("QR text not found in DOM, attempting visual capture...")
                         try:
-                            # Try to find a canvas or the center-right part of the page where QR usually sits
+                            # Try multiple selectors for the canvas
                             qr_el = self._page.query_selector('canvas[aria-label="Scan me!"]') or \
-                                    self._page.query_selector('div[data-ref]') or \
+                                    self._page.query_selector('div[data-ref] canvas') or \
                                     self._page.query_selector('canvas')
                             
                             if qr_el:
@@ -687,13 +694,13 @@ class WhatsAppClient:
                                 b64 = base64.b64encode(screenshot_bytes).decode()
                                 data_url = f"data:image/png;base64,{b64}"
                             else:
-                                log.info("QR element not found specifically, performing center-page capture...")
-                                # Last resort: Capture the middle area of the page where QR might be
-                                screenshot_bytes = self._page.screenshot(clip={"x": 500, "y": 100, "width": 400, "height": 400})
+                                log.info("QR element not found specifically, performing center-page crop...")
+                                # Last resort: Capture the middle area
+                                screenshot_bytes = self._page.screenshot(clip={"x": 400, "y": 100, "width": 500, "height": 500})
                                 b64 = base64.b64encode(screenshot_bytes).decode()
                                 data_url = f"data:image/png;base64,{b64}"
                         except Exception as e:
-                            log.warning(f"Visual capture failed: {e}")
+                            log.error(f"Visual capture failed: {e}")
 
                     if data_url and data_url != self.last_qr:
                         self.last_qr = data_url
