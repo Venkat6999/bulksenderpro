@@ -145,37 +145,60 @@ class WhatsAppClient:
         phone = chat_id.replace("@c.us", "")
         url = f"https://web.whatsapp.com/send?phone={phone}"
 
-        try:
-            self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        log.info(f"Sending message to {phone}")
 
-            box_selector = 'div[title="Type a message"], div[contenteditable="true"][data-tab="10"], [title="Type a message"]'
+        try:
+            # Navigate to chat
+            self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            time.sleep(2)  # Wait for page to load
+
+            # Wait for chat box or invalid number popup
+            box_selector = 'div[contenteditable="true"][data-tab="10"], div[title="Type a message"], [data-testid="conversation-compose-box-input"]'
             invalid_selector = '[data-testid="popup-contents"]'
 
-            loc = self._page.wait_for_selector(f"{box_selector}, {invalid_selector}", timeout=30000)
-
-            if self._page.query_selector(invalid_selector):
-                ok_btn = self._page.query_selector('button[data-testid="popup-controls-ok"], button:has-text("OK")')
-                if ok_btn:
-                    ok_btn.click(force=True)
-                raise RuntimeError("Invalid/Unregistered number")
+            try:
+                loc = self._page.wait_for_selector(box_selector, timeout=30000)
+            except Exception:
+                # Check if invalid number popup appeared
+                if self._page.query_selector(invalid_selector):
+                    ok_btn = self._page.query_selector('button[data-testid="popup-controls-ok"], button:has-text("OK")')
+                    if ok_btn:
+                        ok_btn.click(force=True)
+                    raise RuntimeError(f"Invalid/Unregistered number: {phone}")
+                raise RuntimeError(f"Chat box not found for {phone}")
 
             if loc:
+                # Click and type message
                 loc.click()
-                time.sleep(0.2)
-                loc.fill(message)
-                loc.press("Space")
+                time.sleep(0.3)
+                
+                # Clear any existing text first
+                self._page.keyboard.press("Control+a")
+                time.sleep(0.1)
                 self._page.keyboard.press("Backspace")
-                time.sleep(0.5)
-                loc.press("Enter")
+                time.sleep(0.1)
+                
+                # Type the message
+                loc.fill(message)
                 time.sleep(0.5)
 
-                send_btn = self._page.query_selector('[data-testid="send"], [data-icon="send"], button[aria-label="Send"]')
+                # Press Enter to send
+                loc.press("Enter")
+                time.sleep(1)
+
+                # Alternative: Try clicking send button
+                send_btn = self._page.query_selector('[data-testid="compose-btn-send"]') or \
+                          self._page.query_selector('[data-icon="send"]') or \
+                          self._page.query_selector('button[aria-label="Send now"]')
+                
                 if send_btn:
                     send_btn.click(force=True)
+                    time.sleep(0.5)
 
-                time.sleep(0.5)
+                log.info(f"Message sent successfully to {phone}")
             else:
                 raise RuntimeError("Chat box not found")
+                
         except Exception as e:
             log.error(f"Send message error to {phone}: {e}")
             raise
@@ -722,9 +745,44 @@ class WhatsAppClient:
                     # assume we're ready even if chat list selector doesn't match
                     if authenticated_since and (time.time() - authenticated_since) > 30:
                         log.warning("⚠️ Timeout fallback: Forcing 'ready' state after 30s in authenticated")
+                        
+                        # VERIFY: Try to check if page actually has chat elements
+                        try:
+                            page_check = self._page.evaluate("""
+                                () => {
+                                    // Check if we can see any chat-related elements
+                                    const hasChatList = !!document.querySelector('[data-testid="chat-list"]') ||
+                                                       !!document.querySelector('#pane-side');
+                                    const hasComposeBox = !!document.querySelector('[data-testid="conversation-compose-box-input"]') ||
+                                                         !!document.querySelector('div[contenteditable="true"]');
+                                    const hasMainArea = !!document.querySelector('#main') ||
+                                                       !!document.querySelector('[data-testid="conversation-panel-wrapper"]');
+                                    
+                                    return {
+                                        hasChatList,
+                                        hasComposeBox,
+                                        hasMainArea,
+                                        url: window.location.href
+                                    };
+                                }
+                            """)
+                            
+                            log.info(f"Page verification: {page_check}")
+                            
+                            # If we have at least compose box or main area, consider ready
+                            if page_check.get('hasComposeBox') or page_check.get('hasMainArea'):
+                                log.info("✅ Page verification passed - marking as ready")
+                            else:
+                                log.warning("⚠️ Page verification failed - WhatsApp may not be fully loaded yet")
+                                # Still mark as ready but add extra wait time in send_message
+                            
+                        except Exception as e:
+                            log.warning(f"Page verification error: {e}")
+                        
                         ready_emitted = True
                         self.is_ready = True
                         self.last_qr = None
+                        log.info("WhatsApp ready ✅✅✅")
                         self._on_ready()
                     else:
                         # Still waiting, log progress every 10 seconds

@@ -1,6 +1,3 @@
-import eventlet
-eventlet.monkey_patch()
-
 import os
 import asyncio
 import base64
@@ -30,10 +27,11 @@ AUTH_PATH = "/data/.wwebjs_auth" if (IS_RENDER or IS_DOCKER) else "./sessions"
 app = Flask(__name__, static_folder="app/static", template_folder="app/templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "bulksender-secret-key")
 
+# Use threading mode (most stable for Playwright)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode=None, # Let it auto-detect best mode (eventlet/gevent)
+    async_mode="threading",
     logger=False,
     engineio_logger=False,
     ping_timeout=60,
@@ -235,6 +233,8 @@ def _bulk_send_worker(num_list, message, delay_min, delay_max, msgs_per_number, 
     failed = 0
     total  = len(num_list)
 
+    log.info(f"Starting bulk send to {total} numbers")
+
     try:
         for raw_num in num_list:
             if stop_requested:
@@ -245,13 +245,19 @@ def _bulk_send_worker(num_list, message, delay_min, delay_max, msgs_per_number, 
             chat_id = num + "@c.us"
 
             try:
-                registered = wa_client.is_registered(chat_id)
+                log.info(f"\n{'='*50}")
+                log.info(f"Processing: {num}")
+                
+                # Skip is_registered check for now (it's unreliable)
+                # registered = wa_client.is_registered(chat_id)
+                registered = True  # Assume valid, let send_message handle invalid numbers
+                
                 if registered:
                     for i in range(msgs_per_number):
                         if stop_requested:
                             break
 
-                        log.info(f"Sending {i+1}/{msgs_per_number} to {num}...")
+                        log.info(f"Sending message {i+1}/{msgs_per_number} to {num}...")
 
                         if file_data:
                             b64 = base64.b64encode(file_data["data"]).decode()
@@ -266,6 +272,8 @@ def _bulk_send_worker(num_list, message, delay_min, delay_max, msgs_per_number, 
                             wa_client.send_message(chat_id, message)
 
                         sent += 1
+                        log.info(f"✅ Successfully sent to {num}")
+                        
                         socketio.emit("progress", {
                             "type":    "success",
                             "number":  num,
@@ -277,20 +285,24 @@ def _bulk_send_worker(num_list, message, delay_min, delay_max, msgs_per_number, 
                             time.sleep(1)
                 else:
                     failed += 1
+                    log.warning(f"❌ {num} is not registered on WhatsApp")
                     socketio.emit("progress", {
                         "type":   "fail",
                         "number": num,
-                        "reason": "Not registered",
+                        "reason": "Not registered on WhatsApp",
                         "current": sent + failed,
                         "total":  total * msgs_per_number,
                     })
 
             except Exception as e:
                 failed += 1
+                error_msg = str(e)
+                log.error(f"❌ Failed to send to {num}: {error_msg}")
+                
                 socketio.emit("progress", {
                     "type":   "fail",
                     "number": num,
-                    "reason": str(e),
+                    "reason": error_msg[:100],  # Truncate long errors
                     "current": sent + failed,
                     "total":  total * msgs_per_number,
                 })
@@ -298,12 +310,17 @@ def _bulk_send_worker(num_list, message, delay_min, delay_max, msgs_per_number, 
             # Delay between numbers
             if raw_num != num_list[-1] and not stop_requested:
                 delay_ms = random.randint(delay_min, delay_max)
+                log.info(f"⏱️ Waiting {delay_ms/1000:.1f}s before next message...")
                 time.sleep(delay_ms / 1000)
 
     except Exception as e:
-        log.error(f"FATAL ERROR in bulk send: {e}")
+        log.error(f"FATAL ERROR in bulk send: {e}", exc_info=True)
     finally:
         is_currently_sending = False
+        summary_msg = f"Campaign complete: {sent} sent, {failed} failed out of {total * msgs_per_number}"
+        log.info(f"\n{'='*50}")
+        log.info(summary_msg)
+        
         socketio.emit("completed", {
             "sent":    sent,
             "failed":  failed,
