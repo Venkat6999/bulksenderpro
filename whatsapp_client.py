@@ -733,45 +733,67 @@ class WhatsAppClient:
         try:
             result = self._page.evaluate("""
                 () => {
-                    // Check for QR code
-                    const qrCanvas = document.querySelector('canvas[aria-label="Scan me!"]')
-                                  || document.querySelector('div[data-ref]')
-                                  || document.querySelector('canvas');
-
-                    // Check for chat list (ready state)
+                    // PRIORITY 1: Check for chat list (ready state) - most reliable indicator
                     const chatList = document.querySelector('[data-testid="chat-list"]')
                                   || document.querySelector('#pane-side')
+                                  || document.querySelector('[role="grid"][aria-label="Chat list"]')
                                   || document.querySelector('div[aria-label="Chat list"]')
                                   || document.querySelector('[data-testid="chatlist"]');
-
-                    // Check for intro screen (authenticated but not fully ready)
-                    const introTitle = document.querySelector('._amid')
-                                    || document.querySelector('[data-testid="intro-title"]')
-                                    || document.querySelector('[data-testid="intro-md-bubble-heading"]');
-
-                    // Check for main app container
-                    const appMain = document.querySelector('#app')
-                                 || document.querySelector('[data-testid="conversation-panel-wrapper"]');
                     
-                    // Check for "Unsupported Browser" or errors
-                    const unsupported = document.querySelector('.browser-not-supported')
-                                     || document.body.innerText.includes('Update your browser');
-
-                    if (unsupported) {
-                        return 'unsupported';
-                    }
                     if (chatList) {
                         return 'ready';
                     }
+
+                    // PRIORITY 2: Check if main conversation panels exist (also means ready)
+                    const conversationPanel = document.querySelector('[data-testid="conversation-panel-wrapper"]')
+                                           || document.querySelector('#main');
+                    const noChatSelected = document.querySelector('[data-testid="conversation-screen"]')
+                                        || document.querySelector('[data-testid="default-content"]');
+                    
+                    if (conversationPanel && noChatSelected) {
+                        return 'ready';
+                    }
+
+                    // PRIORITY 3: Check for loading/syncing screen (authenticated but not ready)
+                    const loadingScreen = document.querySelector('[data-testid="startup"]')
+                                       || document.querySelector('progress')
+                                       || document.querySelector('.landing-wrapper')
+                                       || (document.body && document.body.innerText.includes('Loading your chats'))
+                                       || (document.body && document.body.innerText.includes('Syncing'));
+                    
+                    if (loadingScreen) {
+                        return 'authenticated';
+                    }
+
+                    // PRIORITY 4: Check for intro/welcome screen
+                    const introTitle = document.querySelector('._amid')
+                                    || document.querySelector('[data-testid="intro-title"]')
+                                    || document.querySelector('[data-testid="intro-md-bubble-heading"]');
+                    
                     if (introTitle) {
                         return 'authenticated';
                     }
-                    if (qrCanvas) {
+
+                    // PRIORITY 5: Check for QR code (only if visible on screen)
+                    const qrEl = document.querySelector('canvas[aria-label="Scan me!"]')
+                              || document.querySelector('div[data-ref]')
+                              || document.querySelector('canvas');
+                    
+                    const isQRVisible = qrEl && qrEl.offsetParent !== null;
+                    
+                    if (isQRVisible) {
                         return 'qr';
                     }
+
+                    // PRIORITY 6: Check if WhatsApp Web app is loaded at all
+                    const appMain = document.querySelector('#app')
+                                 || document.querySelector('[data-testid="wa-web"]');
+                    
                     if (appMain) {
                         return 'loading';
                     }
+                    
+                    // Default: still loading
                     return 'loading';
                 }
             """)

@@ -143,6 +143,21 @@ def health():
     return "OK", 200
 
 
+@app.get("/debug-state")
+def debug_state():
+    """Diagnostic endpoint to check WhatsApp client state"""
+    if not wa_client:
+        return jsonify({"error": "WhatsApp client not initialized"}), 500
+    
+    return jsonify({
+        "is_ready": wa_client.is_ready,
+        "last_qr": bool(wa_client.last_qr),
+        "last_qr_length": len(wa_client.last_qr) if wa_client.last_qr else 0,
+        "session_path": str(wa_client.session_path),
+        "is_docker": wa_client.is_docker,
+    }), 200
+
+
 @app.post("/logout")
 def logout():
     global is_currently_sending, stop_requested
