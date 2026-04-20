@@ -50,7 +50,7 @@ def on_connect():
             log.info("Emitting ready status to new client")
             emit("status", "ready")
         elif wa_client.last_qr:
-            log.info("Emitting QR to new client")
+            log.info(f"Emitting cached QR to new client (length: {len(wa_client.last_qr)})")
             emit("qr", wa_client.last_qr)
             emit("status", "initializing")
         else:
@@ -70,6 +70,7 @@ def on_disconnect():
 def on_qr(qr_data_url: str):
     log.info("QR Code ready 📲")
     try:
+        log.info(f"Emitting QR event (length: {len(qr_data_url)})")
         socketio.emit("qr", qr_data_url)
         log.info("QR event emitted successfully")
     except Exception as e:

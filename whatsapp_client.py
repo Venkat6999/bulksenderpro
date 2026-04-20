@@ -607,8 +607,25 @@ class WhatsAppClient:
                 **launch_opts
             )
             
-            # STEALTH: Evade 'Headless' detection by deleting the webdriver property
-            self._context.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
+            # STEALTH: Robust evasion for headless detection
+            self._context.add_init_script("""
+                // Hide webdriver
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                
+                // Mock languages
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                
+                // Mock plugins
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                
+                // Mock WebGL vendor/renderer
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) return 'Intel Inc.';
+                    if (parameter === 37446) return 'Intel(R) Iris(TM) Graphics 6100';
+                    return getParameter.apply(this, arguments);
+                };
+            """)
             
             self._page = self._context.new_page()
             self._page.on("console", lambda m: None)
@@ -657,17 +674,26 @@ class WhatsAppClient:
                         self._last_qr_text = qr_text
                         data_url = self._qr_to_data_url(qr_text)
                     elif not qr_text:
-                        # VISUAL FALLBACK: Take a screenshot of the QR element directly
+                        # VISUAL CAPTURE: Last resort for headless environment
                         try:
-                            # Selection for the QR container
+                            # Try to find a canvas or the center-right part of the page where QR usually sits
                             qr_el = self._page.query_selector('canvas[aria-label="Scan me!"]') or \
-                                    self._page.query_selector('div[data-ref]')
+                                    self._page.query_selector('div[data-ref]') or \
+                                    self._page.query_selector('canvas')
+                            
                             if qr_el:
+                                log.info("Capturing QR via element screenshot...")
                                 screenshot_bytes = qr_el.screenshot()
                                 b64 = base64.b64encode(screenshot_bytes).decode()
                                 data_url = f"data:image/png;base64,{b64}"
-                        except:
-                            pass
+                            else:
+                                log.info("QR element not found specifically, performing center-page capture...")
+                                # Last resort: Capture the middle area of the page where QR might be
+                                screenshot_bytes = self._page.screenshot(clip={"x": 500, "y": 100, "width": 400, "height": 400})
+                                b64 = base64.b64encode(screenshot_bytes).decode()
+                                data_url = f"data:image/png;base64,{b64}"
+                        except Exception as e:
+                            log.warning(f"Visual capture failed: {e}")
 
                     if data_url and data_url != self.last_qr:
                         self.last_qr = data_url
@@ -719,28 +745,34 @@ class WhatsAppClient:
                     // Check for main app container
                     const appMain = document.querySelector('#app')
                                  || document.querySelector('[data-testid="conversation-panel-wrapper"]');
+                    
+                    // Check for "Unsupported Browser" or errors
+                    const unsupported = document.querySelector('.browser-not-supported')
+                                     || document.body.innerText.includes('Update your browser');
 
+                    if (unsupported) {
+                        return 'unsupported';
+                    }
                     if (chatList) {
-                        console.log('State: ready (chat list found)');
                         return 'ready';
                     }
                     if (introTitle) {
-                        console.log('State: authenticated (intro found)');
                         return 'authenticated';
                     }
                     if (qrCanvas) {
-                        console.log('State: qr (qr canvas found)');
                         return 'qr';
                     }
                     if (appMain) {
-                        console.log('State: loading (app main found)');
                         return 'loading';
                     }
-                    console.log('State: loading (default)');
                     return 'loading';
                 }
             """)
-            log.info(f"Detected state: {result}")
+            if result == 'unsupported':
+                log.error("WA reported browser as unsupported. Check stealth scripts.")
+            
+            if result != 'loading':
+                log.info(f"Detected state: {result}")
             return result or "loading"
         except Exception as e:
             log.warning(f"State detection error: {e}")
