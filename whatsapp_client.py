@@ -148,18 +148,22 @@ class WhatsAppClient:
         log.info(f"Sending message to {phone}")
 
         try:
-            # Navigate to chat
-            self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            # Navigate to chat - REDUCED TIMEOUT to prevent hanging
+            log.info(f"Navigating to: {url}")
+            self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
             time.sleep(2)  # Wait for page to load
 
             # Wait for chat box or invalid number popup
             box_selector = 'div[contenteditable="true"][data-tab="10"], div[title="Type a message"], [data-testid="conversation-compose-box-input"]'
             invalid_selector = '[data-testid="popup-contents"]'
 
+            log.info("Waiting for chat box...")
             try:
-                loc = self._page.wait_for_selector(box_selector, timeout=30000)
+                loc = self._page.wait_for_selector(box_selector, timeout=15000)  # REDUCED from 30s to 15s
+                log.info("Chat box found!")
             except Exception:
                 # Check if invalid number popup appeared
+                log.warning("Chat box not found, checking popup...")
                 if self._page.query_selector(invalid_selector):
                     ok_btn = self._page.query_selector('button[data-testid="popup-controls-ok"], button:has-text("OK")')
                     if ok_btn:
@@ -179,21 +183,13 @@ class WhatsAppClient:
                 time.sleep(0.1)
                 
                 # Type the message
+                log.info(f"Typing message...")
                 loc.fill(message)
-                time.sleep(0.5)
+                time.sleep(0.3)
 
                 # Press Enter to send
                 loc.press("Enter")
-                time.sleep(1)
-
-                # Alternative: Try clicking send button
-                send_btn = self._page.query_selector('[data-testid="compose-btn-send"]') or \
-                          self._page.query_selector('[data-icon="send"]') or \
-                          self._page.query_selector('button[aria-label="Send now"]')
-                
-                if send_btn:
-                    send_btn.click(force=True)
-                    time.sleep(0.5)
+                time.sleep(0.8)
 
                 log.info(f"Message sent successfully to {phone}")
             else:
@@ -605,7 +601,7 @@ class WhatsAppClient:
             self._playwright = sync_playwright().start()
 
             launch_opts = {
-                "headless": self.is_docker,
+                "headless": True,  # Always headless (even locally for testing)
                 "args": [
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
@@ -613,6 +609,8 @@ class WhatsAppClient:
                     "--disable-gpu",
                     "--no-zygote",
                     "--disable-extensions",
+                    "--disable-web-security",
+                    "--disable-features=IsolateOrigins,site-per-process",
                 ],
             }
 
